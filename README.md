@@ -1,0 +1,1 @@
+![ScanCan](https://github.com/bradsacks99/ScanCan/blob/main/src/static/scancan-logo.png)

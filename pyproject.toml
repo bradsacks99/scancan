@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "ScanCan"
+version = "0.1.0"
+description = "Virus Scanning API"
+authors = ["Bradley Sacks <bradsacks99@gmail.com>"]
+license = "GPL-3.0-only"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastapi = "^0.79.1"
+pyvalve = "^0.1.2"
+uvicorn = "^0.18.2"
+aiofile = "^3.8.1"
+aiopath = "^0.5.12"
+python-multipart = "^0.0.5"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.2"
+pytest-pylint = "^0.18.0"
+pre-commit = "^2.20.0"
+pytest-cov = "^3.0.0"
+pytest-mypy = "^0.9.1"
+
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
