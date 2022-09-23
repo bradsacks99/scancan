@@ -3,7 +3,10 @@ from pyvalve import PyvalveSocket, PyvalveConnectionError
 
 
 class ClamAv:
-    """ClamAv"""
+    """
+    ClamAv
+    Provides an abstraction between Pyvalve and the application
+    """
     def __init__(self) -> None:
         """
         ClamAv constructor
@@ -21,6 +24,11 @@ class ClamAv:
         self.logger.info("Running ping command")
         await self.check_connect()
         return await self.pvs.ping();
+
+    async def stats(self):
+        self.logger.info("Running stats command")
+        await self.check_connect()
+        return await self.pvs.stats();
 
     async def scan(self, path):
         self.logger.info("Running scan command")
