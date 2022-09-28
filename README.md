@@ -21,6 +21,51 @@ docker rm scancan;docker run -it --volume=/pathtoamountyouwanttoscan:/opt/files 
 1. It's not well tested
 2. If you are running multiple containers you'll get blocked from downloading at the same time.
 
+# Benchmark
+Please take these results for what they are worth...not much.
+
+Running Apache Bench on a local container:
+Concurrency: 100
+Requests: 10000
+Requests scanned a 10 KB zip file on a mounted volume.
+
+Results:
+```commandline
+Concurrency Level:      100
+Time taken for tests:   17.318 seconds
+Complete requests:      10000
+Failed requests:        0
+Total transferred:      2000000 bytes
+Total body sent:        2180000
+HTML transferred:       560000 bytes
+Requests per second:    577.43 [#/sec] (mean)
+Time per request:       173.180 [ms] (mean)
+Time per request:       1.732 [ms] (mean, across all concurrent requests)
+Transfer rate:          112.78 [Kbytes/sec] received
+                        122.93 kb/s sent
+                        235.71 kb/s total
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    1   0.5      0       6
+Processing:    12  172  13.6    169     242
+Waiting:        3  162  13.7    160     236
+Total:         12  173  13.5    170     243
+WARNING: The median and mean for the initial connection time are not within a normal deviation
+        These results are probably not that reliable.
+
+Percentage of the requests served within a certain time (ms)
+  50%    170
+  66%    173
+  75%    177
+  80%    181
+  90%    191
+  95%    199
+  98%    209
+  99%    218
+ 100%    243 (longest request)
+
+```
 # Usage
 
 ## ClamAV API documentation is available on:

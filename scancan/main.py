@@ -49,8 +49,8 @@ async def shutdown_event():
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
-    file_path = os.path.join(app.root_path, "static")
-    return FileResponse(path=file_path, headers={f"Content-Disposition": "attachment; filename=favicon.ico"})
+    file_path = os.path.join(app.root_path, "static", "favicon.ico")
+    return FileResponse(path=file_path)
 
 
 @app.get("/health")
@@ -152,7 +152,8 @@ async def cont_scan(path: str):
     result = await clamav.contscan(path)
 
     response = {"result": result}
-    if re.match(r'^.*\sFOUND$', result):
+    regex = re.compile(r'^.*\sFOUND', re.MULTILINE)
+    if re.match(regex, result):
         return JSONResponse(status_code=status.HTTP_406_NOT_ACCEPTABLE, content=response)
     return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
