@@ -25,9 +25,9 @@ docker rm scancan;docker run -it --volume=/pathtoamountyouwanttoscan:/opt/files 
 Please take these results for what they are worth...not much.
 
 Running Apache Bench on a local container:
-Concurrency: 100
-Requests: 10000
-Requests scanned a 10 KB zip file on a mounted volume.
+* Concurrency: 100
+* Requests: 10000
+* Requests scanned a 10 KB zip file on a mounted volume.
 
 Results:
 ```commandline
