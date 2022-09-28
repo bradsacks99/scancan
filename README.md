@@ -21,7 +21,7 @@ docker rm scancan;docker run -it --volume=/pathtoamountyouwanttoscan:/opt/files 
 1. It's not well tested
 2. If you are running multiple containers you'll get blocked from downloading at the same time.
 
-# Benchmark
+# Benchmarks
 Please take these results for what they are worth...not much.
 
 Running Apache Bench on a local container:
