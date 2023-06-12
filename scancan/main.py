@@ -1,19 +1,20 @@
 """ScanCan Main entry point"""
+import asyncio
 import os
 import re
 import urllib
 from io import BytesIO
 
-from fastapi import FastAPI, HTTPException, File, status
+import aiohttp
+from aiofile import async_open
+from fastapi import FastAPI, File, status
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-import aiohttp
-import asyncio
+from pyvalve import PyvalveConnectionError, PyvalveScanningError
 
-from config import *
-from logger import Logger
+import config as conf
 from clamav import ClamAv
-from aiofile import async_open
+from logger import Logger
 
 logger = Logger(name='ScanCan').get_logger()
 
@@ -36,7 +37,7 @@ async def startup_event():
     """ Startup """
     logger.info("Starting up ScanCan")
     global clamav
-    clamav = ClamAv()
+    clamav = ClamAv(conf)
     clamav.set_logger(logger)
     await clamav.connecting()
 
@@ -60,7 +61,11 @@ async def health():
         Returns:
             result (object)
     """
-    ping_result = await clamav.ping()
+    try:
+        ping_result = await clamav.ping()
+    except PyvalveConnectionError as err:
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            content={'result': 'ClamAV connection error.'})
 
     if not re.match(r'^PONG$', ping_result):
         logger.error(ping_result)
@@ -89,7 +94,10 @@ async def scan_path(path: str):
             result (Object)
     """
     logger.info("Scanning path: %s" % path)
-    result = await clamav.scan(path)
+    try:
+        result = await clamav.scan(path)
+    except PyvalveScanningError as err:
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
 
     response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):
@@ -127,11 +135,14 @@ async def scan_url(url: str):
         return JSONResponse(
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             content=response)
-    if len(data) > upload_size_limit:
-        response = {'result': 'Max size %d bytes limit exceeded' % upload_size_limit}
+    if len(data) > conf.upload_size_limit:
+        response = {'result': 'Max size %d bytes limit exceeded' % conf.upload_size_limit}
         return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content=response)
 
-    result = await clamav.instream(BytesIO(data))
+    try:
+        result = await clamav.instream(BytesIO(data))
+    except PyvalveScanningError as err:
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
 
     response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):
@@ -149,7 +160,10 @@ async def cont_scan(path: str):
             result (Object)
     """
     logger.info("Scanning path: %s" % path)
-    result = await clamav.contscan(path)
+    try:
+        result = await clamav.contscan(path)
+    except PyvalveScanningError as err:
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
 
     response = {"result": result}
     regex = re.compile(r'^.*\sFOUND', re.MULTILINE)
@@ -167,11 +181,14 @@ async def scan_upload_file(file: bytes = File()):
         Returns:
             result (Object)
     """
-    if len(file) > upload_size_limit:
+    if len(file) > conf.upload_size_limit:
         response = {'result': 'Max size %d bytes limit exceeded' % upload_size_limit}
         return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content=response)
 
-    result = await clamav.instream(BytesIO(file))
+    try:
+        result = await clamav.instream(BytesIO(file))
+    except PyvalveScanningError as err:
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
 
     response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):

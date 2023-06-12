@@ -56,6 +56,7 @@ COPY LICENSE /app
 
 WORKDIR /app
 ENV PYTHONPATH=${PYTHONPATH}:/app
+ENV CLAMD_CONN=socket
 
 RUN pip3 install poetry==1.1.5
 RUN poetry config virtualenvs.create false

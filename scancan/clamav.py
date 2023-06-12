@@ -1,5 +1,5 @@
 """Clamav Connector"""
-from pyvalve import PyvalveSocket, PyvalveConnectionError
+from pyvalve import PyvalveSocket, PyvalveConnectionError, PyvalveNetwork
 
 
 class ClamAv:
@@ -7,7 +7,7 @@ class ClamAv:
     ClamAv
     Provides an abstraction between Pyvalve and the application
     """
-    def __init__(self) -> None:
+    def __init__(self, conf) -> None:
         """
         ClamAv constructor
 
@@ -16,6 +16,7 @@ class ClamAv:
         """
         self.pvs = None
         self.logger = None
+        self.conf = conf
 
     def set_logger(self, logger):
         self.logger = logger
@@ -47,7 +48,13 @@ class ClamAv:
 
     async def connecting(self):
         self.logger.info("Connecting...")
-        self.pvs = await PyvalveSocket()
+        if self.conf.clamd_conn == 'net':
+            self.pvs = await PyvalveNetwork(
+                self.conf.clamd_host,
+                self.conf.clamd_port
+            )
+        else:
+            self.pvs = await PyvalveSocket(self.conf.clamd_socket)
         self.pvs.set_persistant_connection(True)
 
     async def check_connect(self):
