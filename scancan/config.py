@@ -1,4 +1,4 @@
-# Config File #
+""" Config File """
 import os
 
 upload_size_limit = 104857600

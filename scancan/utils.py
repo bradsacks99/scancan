@@ -1,3 +1,4 @@
+""" Utils """
 from pyvalve import PyvalveSocket
 
 async def get_clamav_connection() -> PyvalveSocket:
@@ -5,3 +6,4 @@ async def get_clamav_connection() -> PyvalveSocket:
     pvs = await PyvalveSocket()
     pvs.set_persistant_connection(True)
     return pvs
+

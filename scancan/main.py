@@ -182,7 +182,7 @@ async def scan_upload_file(file: bytes = File()):
             result (Object)
     """
     if len(file) > conf.upload_size_limit:
-        response = {'result': 'Max size %d bytes limit exceeded' % upload_size_limit}
+        response = {'result': 'Max size %d bytes limit exceeded' % conf.upload_size_limit}
         return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content=response)
 
     try:
