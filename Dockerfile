@@ -1,8 +1,8 @@
 ARG basev=base
 
-FROM ubuntu:jammy AS clam_base
+FROM ubuntu:noble AS clam_base
 
-ENV DEBIAN_FRONTEND noninteractiv
+ENV DEBIAN_FRONTEND=noninteractiv
 
 RUN apt-get update --fix-missing
 
@@ -10,7 +10,8 @@ RUN apt-get update
 RUN apt-get install -y clamav \
     clamav-daemon \
     clamav-freshclam \
-    cron
+    cron \
+    pipx
 
 RUN touch /var/log/freshclam.log
 RUN chmod 600 /var/log/freshclam.log
@@ -24,13 +25,13 @@ COPY clamav_config/clamd.conf /etc/clamav/clamd.conf
 RUN chmod 0600 /etc/clamav/clamd.conf
 RUN chown clamav /etc/clamav/clamd.conf
 
-FROM clam_base AS clam_cron
-
 RUN mkdir /opt/clamav
 COPY clamdb/bytecode.cvd /opt/clamav/bytecode.cvd
 COPY clamdb/daily.cvd /opt/clamav/daily.cvd
 COPY clamdb/main.cvd /opt/clamav/main.cvd
 RUN chown -R clamav /opt/clamav/
+
+FROM clam_base AS clam_cron
 
 COPY clamav_config/freshclam_cron /etc/cron.d/freshclam
 RUN chmod 0500 /etc/cron.d/freshclam
@@ -40,34 +41,32 @@ CMD cron
 
 FROM clam_${basev} AS final
 
-RUN apt-get install -y software-properties-common
+ENV PYTHONPATH=/app
+ENV CLAMD_CONN=socket
+ENV PATH=${PATH}:/root/.local/bin
 
-RUN add-apt-repository -y ppa:deadsnakes/ppa
+EXPOSE 8080
 
-RUN apt-get update
-RUN apt-get install -y python3.10 \
-    python3-pip
+RUN pipx install uv
 
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 RUN mkdir /app
 
 COPY /scancan /app 
 COPY pyproject.toml /app
+COPY uv.lock /app
 COPY LICENSE /app
-
+COPY README.md /app
 WORKDIR /app
-ENV PYTHONPATH=${PYTHONPATH}:/app
-ENV CLAMD_CONN=socket
 
-RUN pip3 install poetry==1.7.1
-RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev
-
-EXPOSE 8080
+RUN uv sync --frozen
 
 COPY "./entrypoint.sh" "/entrypoint.sh"
 RUN chmod 0500 /entrypoint.sh
 RUN chown clamav /entrypoint.sh
 
 USER clamav
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 ENTRYPOINT [ "/entrypoint.sh" ]
