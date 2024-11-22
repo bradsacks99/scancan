@@ -97,7 +97,8 @@ async def scan_path(path: str):
     try:
         result = await clamav.scan(path)
     except PyvalveScanningError as err:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
+        logger.exception()
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scannning")
 
     response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):
@@ -142,7 +143,8 @@ async def scan_url(url: str):
     try:
         result = await clamav.instream(BytesIO(data))
     except PyvalveScanningError as err:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
+        logger.exception()
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scanning stream")
 
     response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):
@@ -163,7 +165,8 @@ async def cont_scan(path: str):
     try:
         result = await clamav.contscan(path)
     except PyvalveScanningError as err:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
+        logger.exception()
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scanning (cont)")
 
     response = {"result": result}
     regex = re.compile(r'^.*\sFOUND', re.MULTILINE)
@@ -188,7 +191,8 @@ async def scan_upload_file(file: bytes = File()):
     try:
         result = await clamav.instream(BytesIO(file))
     except PyvalveScanningError as err:
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=str(err))
+        logger.exception()
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scanning file")
 
     response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):

@@ -31,6 +31,10 @@ COPY clamdb/daily.cvd /opt/clamav/daily.cvd
 COPY clamdb/main.cvd /opt/clamav/main.cvd
 RUN chown -R clamav /opt/clamav/
 
+RUN mkdir /var/run/clamav
+RUN touch /var/run/clamav/clamd.ctl
+RUN chown clamav /var/run/clamav/clamd.ctl
+
 FROM clam_base AS clam_cron
 
 COPY clamav_config/freshclam_cron /etc/cron.d/freshclam

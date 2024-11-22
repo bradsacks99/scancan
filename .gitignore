@@ -166,3 +166,4 @@ Sphinx-docs/
 clamdb/
 openapi.json
 openapi.md
+.DS_Store
