@@ -7,14 +7,15 @@ from io import BytesIO
 
 import aiohttp
 from aiofile import async_open
-from fastapi import FastAPI, File, status
+from fastapi import FastAPI, File, Request, status
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pyvalve import PyvalveConnectionError, PyvalveScanningError
+from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScanningError
 
 import config as conf
 from clamav import ClamAv
 from logger import Logger
+from scancan.models import ExceptionResponse, ScanResponse, VirusFoundResponse
 
 logger = Logger(name='ScanCan').get_logger()
 
@@ -27,10 +28,27 @@ app = FastAPI(
         "favicon": 'favicon.ico',
     },
 )
+
 clamav = None
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+class ScanException(Exception):
+    """ Scan Exception """
+    def __init__(self, status_code: int, response: str):
+        self.status_code = status_code
+        self.response = response
+
+@app.exception_handler(ScanException)
+async def custom_exception_handler(request: Request, exc: ScanException):
+    """ Scan Exception Handler """
+    return JSONResponse(
+        status_code=exc.status_code,     
+        content=ExceptionResponse(
+            status_code=exc.status_code,
+            response=exc.response
+        ).model_dump()
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -84,26 +102,44 @@ async def health():
     return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
 
-@app.post("/scanpath/{path:path}")
-async def scan_path(path: str):
+@app.post("/scanpath/{path:path}",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": ExceptionResponse},
+        status.HTTP_406_NOT_ACCEPTABLE: {"model": VirusFoundResponse}}
+    )
+async def scan_path(path: str) -> ScanResponse:
     """
     POST /scanpath: scan a mounted path with ClamAV
         Parameters:
             path (str): a path
         Returns:
-            result (Object)
+            result (ScanResponse)
     """
     logger.info("Scanning path: %s" % path)
     try:
         result = await clamav.scan(path)
+    except PyvalveResponseError as err:
+        logger.exception(str(err))
+        raise ScanException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            response='Error scannning'
+        ) from err
     except PyvalveScanningError as err:
-        logger.exception()
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scannning")
+        logger.exception(str(err))
+        raise ScanException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            response='Error scannning'
+        ) from err
 
-    response = {"result": result}
     if re.match(r'^.*\sFOUND$', result):
-        return JSONResponse(status_code=status.HTTP_406_NOT_ACCEPTABLE, content=response)
-    return JSONResponse(status_code=status.HTTP_200_OK, content=response)
+        return VirusFoundResponse(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            response=result,
+            path=path
+        ).model_dump()
+
+    return ScanResponse(response=result).model_dump()
 
 
 @app.get("/scanurl/")
