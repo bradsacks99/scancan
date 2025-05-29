@@ -16,7 +16,7 @@ RUN chmod 0600 /etc/clamav/freshclam.conf /etc/clamav/clamd.conf && \
 
 RUN mkdir /opt/clamav
 COPY clamdb/bytecode.cvd /opt/clamav/bytecode.cvd
-COPY clamdb/daily.cvd /opt/clamav/daily.cvd
+COPY clamdb/daily.cld /opt/clamav/daily.cld
 COPY clamdb/main.cvd /opt/clamav/main.cvd
 RUN chown -R clamav /opt/clamav/
 
