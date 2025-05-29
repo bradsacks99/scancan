@@ -100,11 +100,6 @@ async def lifespan(app: FastAPI):
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
     """
-    Handles the lifespan of the application.
-
-    Yields:
-        None
-
     Handles requests for the favicon.ico file.
 
     Returns:
@@ -182,13 +177,13 @@ async def scan_path(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
         logger.exception(str(err))
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            response='Error scannning'
+            response='Error scanning'
         ) from err
     except PyvalveScanningError as err:
         logger.exception(str(err))
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            response='Error scannning'
+            response='Error scanning'
         ) from err
 
     if re.match(r'^.*\sFOUND$', result):
@@ -291,7 +286,7 @@ async def cont_scan(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             response=result,
             path=path)
-    return ScanResponse(status_code=status.HTTP_200_OK, response=result).model_dump()
+    return ScanResponse(response=result).model_dump()
 
 
 @app.post("/scanfile",

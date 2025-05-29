@@ -5,6 +5,9 @@ FROM clam_base:latest AS clam_cron
 COPY clamav_config/freshclam_cron /etc/cron.d/freshclam
 RUN chmod 0500 /etc/cron.d/freshclam && \
     crontab /etc/cron.d/freshclam && \
-    touch /var/log/cron.log
+    touch /var/log/cron.log && \
+    mkdir -p /opt/clamav && \
+    chown 101:102 /opt/clamav && \
+    chmod 0664 /opt/clamav
 
 CMD ["cron", "-f"]

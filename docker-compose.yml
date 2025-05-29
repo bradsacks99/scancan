@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   clam_base:
     build:
@@ -18,11 +16,9 @@ services:
     environment:
       - PYTHONPATH=/app
       - CLAMD_CONN=socket
-      - UV_COMPILE_BYTECODE=1
-      - UV_LINK_MODE=copy
     volumes:
       - ./scancan:/app/scancan:ro
-      - ./clamdb:/opt/clamav:ro
+      - ./clamdb:/opt/clamav
       - ./clamav_config:/etc/clamav:ro
       - ./LICENSE:/app/LICENSE:ro
       - ./README.md:/app/README.md:ro
