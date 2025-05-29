@@ -1,0 +1,10 @@
+ARG basev=base
+
+FROM clam_base:latest AS clam_cron
+
+COPY clamav_config/freshclam_cron /etc/cron.d/freshclam
+RUN chmod 0500 /etc/cron.d/freshclam && \
+    crontab /etc/cron.d/freshclam && \
+    touch /var/log/cron.log
+
+CMD ["cron", "-f"]

@@ -1,0 +1,31 @@
+FROM clam_base:latest AS final
+
+ENV PYTHONPATH=/app
+ENV CLAMD_CONN=socket
+ENV PATH=${PATH}:/root/.local/bin
+
+EXPOSE 8080
+
+RUN pipx install uv
+
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+RUN mkdir /app
+
+COPY /scancan /app 
+COPY pyproject.toml /app
+COPY uv.lock /app
+COPY LICENSE /app
+COPY README.md /app
+WORKDIR /app
+
+RUN uv sync --frozen
+
+COPY "./entrypoint.sh" "/entrypoint.sh"
+RUN chmod 0500 /entrypoint.sh
+RUN chown clamav /entrypoint.sh
+
+USER clamav
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+ENTRYPOINT [ "/entrypoint.sh" ]

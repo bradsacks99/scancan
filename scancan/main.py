@@ -50,11 +50,28 @@ async def shutdown_event():
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
+    """
+    Handles requests for the favicon.ico file.
+
+    Returns:
+        FileResponse: The favicon.ico file located in the static directory.
+
+    Notes:
+        - This endpoint is excluded from the OpenAPI schema.
+        - The favicon is served from the 'static' folder within the application's root path.
+    """
     file_path = os.path.join(app.root_path, "static", "favicon.ico")
     return FileResponse(path=file_path)
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    responses={
+        200: {"description": "Healthy, ClamAV reachable"},
+        500: {"description": "ClamAV connection error or invalid response"},
+        503: {"description": "Unable to communicate with ClamAV"},
+    },
+)
 async def health():
     """
     GET /health: determine the health of ScanCan
@@ -63,7 +80,7 @@ async def health():
     """
     try:
         ping_result = await clamav.ping()
-    except PyvalveConnectionError as err:
+    except PyvalveConnectionError:
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             content={'result': 'ClamAV connection error.'})
 
@@ -84,7 +101,14 @@ async def health():
     return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
 
-@app.post("/scanpath/{path:path}")
+@app.post(
+    "/scanpath/{path:path}",
+    responses={
+        200: {"description": "Scan completed, no threats found"},
+        406: {"description": "Threat(s) found in path"},
+        500: {"description": "Error scanning path"},
+    },
+)
 async def scan_path(path: str):
     """
     POST /scanpath: scan a mounted path with ClamAV
@@ -96,7 +120,7 @@ async def scan_path(path: str):
     logger.info("Scanning path: %s" % path)
     try:
         result = await clamav.scan(path)
-    except PyvalveScanningError as err:
+    except PyvalveScanningError:
         logger.exception()
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scannning")
 
@@ -106,7 +130,16 @@ async def scan_path(path: str):
     return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
 
-@app.get("/scanurl/")
+@app.get(
+    "/scanurl/",
+    responses={
+        200: {"description": "Scan completed, no threats found"},
+        404: {"description": "URL not found"},
+        406: {"description": "Threat(s) found in URL or invalid URL"},
+        413: {"description": "Max size limit exceeded"},
+        500: {"description": "Error scanning stream"},
+    },
+)
 async def scan_url(url: str):
     """
     GET /scanurl: scan a url with ClamAV
@@ -142,7 +175,7 @@ async def scan_url(url: str):
 
     try:
         result = await clamav.instream(BytesIO(data))
-    except PyvalveScanningError as err:
+    except PyvalveScanningError:
         logger.exception()
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scanning stream")
 
@@ -151,8 +184,14 @@ async def scan_url(url: str):
         return JSONResponse(status_code=status.HTTP_406_NOT_ACCEPTABLE, content=response)
     return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
-
-@app.post("/contscan/{path:path}")
+@app.post(
+    "/contscan/{path:path}",
+    responses={
+        200: {"description": "Scan completed, no threats found"},
+        406: {"description": "Threat(s) found in path"},
+        500: {"description": "Error scanning path"},
+    },
+)
 async def cont_scan(path: str):
     """
     POST /contscan: scan a mounted path with ClamAV, continue if found
@@ -164,7 +203,7 @@ async def cont_scan(path: str):
     logger.info("Scanning path: %s" % path)
     try:
         result = await clamav.contscan(path)
-    except PyvalveScanningError as err:
+    except PyvalveScanningError:
         logger.exception()
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scanning (cont)")
 
@@ -175,7 +214,15 @@ async def cont_scan(path: str):
     return JSONResponse(status_code=status.HTTP_200_OK, content=response)
 
 
-@app.post("/scanfile")
+@app.post(
+    "/scanfile",
+    responses={
+        200: {"description": "Scan completed, no threats found"},
+        406: {"description": "Threat(s) found in file"},
+        413: {"description": "Max size limit exceeded"},
+        500: {"description": "Error scanning file"},
+    },
+)
 async def scan_upload_file(file: bytes = File()):
     """
     POST /scanfile: scan a file stream with ClamAV
@@ -190,7 +237,7 @@ async def scan_upload_file(file: bytes = File()):
 
     try:
         result = await clamav.instream(BytesIO(file))
-    except PyvalveScanningError as err:
+    except PyvalveScanningError:
         logger.exception()
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content="Error scanning file")
 
