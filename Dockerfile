@@ -27,7 +27,7 @@ RUN chown clamav /etc/clamav/clamd.conf
 
 RUN mkdir /opt/clamav
 COPY clamdb/bytecode.cvd /opt/clamav/bytecode.cvd
-COPY clamdb/daily.cvd /opt/clamav/daily.cvd
+COPY clamdb/daily.cld /opt/clamav/daily.cld
 COPY clamdb/main.cvd /opt/clamav/main.cvd
 RUN chown -R clamav /opt/clamav/
 
@@ -52,24 +52,21 @@ ENV PATH=${PATH}:/root/.local/bin
 EXPOSE 8080
 
 RUN pipx install uv
+RUN uv python install 3.9
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 RUN mkdir /app
 
-COPY /scancan /app 
-COPY pyproject.toml /app
-COPY uv.lock /app
-COPY LICENSE /app
-COPY README.md /app
+COPY --chown=clamav /scancan /app 
+COPY --chown=clamav pyproject.toml /app
+COPY --chown=clamav uv.lock /app
+COPY --chown=clamav LICENSE /app
+COPY --chown=clamav README.md /app
 WORKDIR /app
 
-RUN uv sync --frozen
+RUN uv sync -p 3.9 --frozen
 
-COPY "./entrypoint.sh" "/entrypoint.sh"
-RUN chmod 0500 /entrypoint.sh
-RUN chown clamav /entrypoint.sh
-
-USER clamav
+COPY --chown=clamav --chmod=0500 "./entrypoint.sh" "/entrypoint.sh"
 
 ENV PATH="/app/.venv/bin:$PATH"
 
