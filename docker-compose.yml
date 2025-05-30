@@ -1,0 +1,39 @@
+services:
+  clam_base:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: clam_base
+    image: clam_base:latest
+
+  scancan:
+    build:
+      context: .
+      dockerfile: Dockerfile.scancan
+    container_name: scancan
+    ports:
+      - "8080:8080"
+    environment:
+      - PYTHONPATH=/app
+      - CLAMD_CONN=socket
+    volumes:
+      - ./scancan:/app/scancan:ro
+      - ./clamdb:/opt/clamav
+      - ./clamav_config:/etc/clamav:ro
+      - ./LICENSE:/app/LICENSE:ro
+      - ./README.md:/app/README.md:ro
+    restart: unless-stopped
+    depends_on:
+      - clam_base
+
+  fresh_clam:
+    build:
+      context: .
+      dockerfile: Dockerfile.cron
+    container_name: fresh_clam
+    volumes:
+      - ./clamdb:/opt/clamav
+      - ./clamav_config:/etc/clamav
+    restart: unless-stopped
+    depends_on:
+      - clam_base
