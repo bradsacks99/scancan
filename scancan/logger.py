@@ -1,5 +1,6 @@
 """ScanCan Logger"""
 import logging
+import sys
 
 
 class Logger:
@@ -35,7 +36,7 @@ class Logger:
         """
         self.logger.setLevel(logging.INFO)
         formatter = logging.Formatter(self.format)
-        con = logging.StreamHandler()
+        con = logging.StreamHandler(stream=sys.stdout)
         con.setLevel(level=logging.INFO)
         con.setFormatter(formatter)
         self.logger.addHandler(con)

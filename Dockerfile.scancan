@@ -1,4 +1,4 @@
-FROM clam_base:latest AS final
+FROM clam_base:latest AS scancan
 
 ENV PYTHONPATH=/app
 ENV CLAMD_CONN=socket

@@ -6,4 +6,3 @@ async def get_clamav_connection() -> PyvalveSocket:
     pvs = await PyvalveSocket()
     pvs.set_persistant_connection(True)
     return pvs
-
