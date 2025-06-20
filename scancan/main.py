@@ -4,11 +4,12 @@ import os
 import re
 import urllib
 from io import BytesIO
+from fastapi.security import HTTPBearer
 from typing_extensions import Annotated
 
 import aiohttp
 from aiofile import async_open
-from fastapi import Depends, FastAPI, File, Request, status
+from fastapi import Depends, FastAPI, File, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScanningError
@@ -16,14 +17,14 @@ from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScannin
 import config as conf
 from clamav import ClamAv
 from logger import Logger
-from models import ExceptionResponse, Health, HealthResponse, ScanResponse, VirusFoundResponse
+from models import ExceptionResponse, Health, HealthResponse, ScanResponse, Version, VirusFoundResponse
 
 logger: Logger = Logger(name='ScanCan').get_logger()
 
 app = FastAPI(
     title="ScanCan",
     description="Virus Scanning API for ClamAV",
-    version="0.1.0",
+    version=conf.SCAN_CAN_VERSION,
     static_directory='static/',
     swagger_static={
         "favicon": 'favicon.ico',
@@ -31,6 +32,20 @@ app = FastAPI(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Authentication dependency
+def authenticate(token: str = Depends(HTTPBearer())):
+    if token.credentials != "hardcoded_token":  # Replace with your token logic
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+# Apply authentication conditionally
+if conf.USE_AUTHENTICATION:
+    @app.middleware("http")
+    async def authentication_middleware(request, call_next):
+        if request.url.path not in ["/health", "/license", "/docs", "/static"]:
+            await authenticate()
+        response = await call_next(request)
+        return response
 
 class VirusFoundException(Exception):
     """ Virus Found Exception """
@@ -131,6 +146,7 @@ async def health(clamav: Annotated[ClamAv, Depends(clamav_init)]) -> HealthRespo
     """
     try:
         ping_result = await clamav.ping()
+        version_result = await clamav.version()
     except PyvalveConnectionError as err:
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -154,7 +170,10 @@ async def health(clamav: Annotated[ClamAv, Depends(clamav_init)]) -> HealthRespo
             response='Invalid response from ClamAV'
         )
 
-    return HealthResponse(response=Health(ping=ping_result, stats=stats_result)).model_dump()
+    return HealthResponse(response=Health(
+        ping=ping_result,
+        version=Version(ClamAV=version_result, ScanCan=conf.SCAN_CAN_VERSION),
+        stats=stats_result)).model_dump()
 
 @app.post("/scanpath/{path:path}",
     status_code=status.HTTP_200_OK,

@@ -2,15 +2,28 @@
 from typing import Optional
 from pydantic import BaseModel
 
+class Version(BaseModel):
+    """
+    Version model representing the version information for ClamAV and ScanCan.
+
+    Attributes:
+        ClamAV (str): The version string for ClamAV.
+        ScanCan (str): The version string for ScanCan.
+    """
+    ClamAV: str
+    ScanCan: str
+
 class Health(BaseModel):
     """
     Represents the health status of the application.
 
     Attributes:
         ping (str): A string indicating the ping status.
+        version (Version): The version information of the application.
         stats (str): A string containing application statistics.
     """
     ping: str
+    version: Version
     stats: str
 
 class HealthResponse(BaseModel):
