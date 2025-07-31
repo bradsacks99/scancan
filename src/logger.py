@@ -2,6 +2,8 @@
 import logging
 import sys
 
+from config import LOG_FORMAT, LOG_LEVEL
+
 
 class Logger:
     """Logger"""
@@ -16,8 +18,8 @@ class Logger:
                 None
         """
         self.logger = logging.getLogger(name)
-        self.level = logging.ERROR
-        self.format = '%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s'
+        self.level = LOG_LEVEL
+        self.format = LOG_FORMAT
 
     def set_level(self, level) -> None:
         """ Set logger level"""

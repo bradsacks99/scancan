@@ -12,7 +12,7 @@ RUN uv python install 3.9
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 RUN mkdir /app
 
-COPY --chown=clamav /scancan /app 
+COPY --chown=clamav /src /app 
 COPY --chown=clamav pyproject.toml /app
 COPY --chown=clamav uv.lock /app
 COPY --chown=clamav LICENSE /app

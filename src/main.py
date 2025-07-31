@@ -4,15 +4,17 @@ import os
 import re
 import urllib
 from io import BytesIO
-from fastapi.security import HTTPBearer
+
 from typing_extensions import Annotated
 
 import aiohttp
 from aiofile import async_open
+from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScanningError
+
 from fastapi import Depends, FastAPI, File, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
+from fastapi.security import HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScanningError
 
 import config as conf
 from clamav import ClamAv
