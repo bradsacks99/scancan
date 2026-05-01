@@ -1,8 +1,8 @@
 # Variables
 DOCKER_COMPOSE = docker compose
-PYLINT_CMD = pytest --pylint scancan/
+PYLINT_CMD = pytest --pylint src/
 PYTEST_CMD = pytest tests/
-MYPY_CMD = pytest --mypy scancan/
+MYPY_CMD = pytest --mypy src/
 AWS_REGION = YOUR_AWS_REGION
 ECR_URL = YOUR_ECR_URL
 

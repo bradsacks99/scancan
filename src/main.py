@@ -1,9 +1,11 @@
 """ScanCan Main entry point"""
 import asyncio
+import importlib.util
 import os
 import re
 import urllib
 from io import BytesIO
+from pathlib import Path
 
 from typing_extensions import Annotated
 
@@ -13,13 +15,18 @@ from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScannin
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, status
 from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
-from fastapi.security import HTTPBearer
-from fastapi.staticfiles import StaticFiles
 
 import config as conf
 from clamav import ClamAv
 from logger import Logger
-from models import ExceptionResponse, Health, HealthResponse, ScanResponse, Version, VirusFoundResponse
+from models import (
+    ExceptionResponse,
+    Health,
+    HealthResponse,
+    ScanResponse,
+    Version,
+    VirusFoundResponse,
+)
 
 logger: Logger = Logger(name='ScanCan').get_logger()
 
@@ -27,25 +34,59 @@ app = FastAPI(
     title="ScanCan",
     description="Virus Scanning API for ClamAV",
     version=conf.SCAN_CAN_VERSION,
-    static_directory='static/',
-    swagger_static={
-        "favicon": 'favicon.ico',
-    },
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+
+def _load_authentication_module():
+    """Load optional addon authentication module from addon/authentication.py."""
+    auth_addon_file = Path("addon/authentication.py")
+
+    if not auth_addon_file.is_file():
+        logger.info("No addon authentication module found at %s", auth_addon_file)
+        return None
+
+    spec = importlib.util.spec_from_file_location("scancan_addon_authentication", auth_addon_file)
+    if not spec or not spec.loader:
+        logger.warning("Unable to load addon authentication module spec from %s", auth_addon_file)
+        return None
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    if not hasattr(module, "authenticate") or not callable(module.authenticate):
+        raise RuntimeError("Addon authentication module must define authenticate(token)")
+    return module
 
 # Authentication dependency
-def authenticate(token: str = Depends(HTTPBearer())):
-    if token.credentials != "hardcoded_token":  # Replace with your token logic
+def authenticate(token: str):
+    """
+    Authenticates the user by verifying the provided token.
+
+    Args:
+        token (str): The token to verify.
+
+    Raises:
+        HTTPException: If the token is invalid or missing.
+    """
+    module = _load_authentication_module()
+    if module is None:
+        return
+
+    result = module.authenticate(token)
+    if result is False:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 # Apply authentication conditionally
 if conf.USE_AUTHENTICATION:
     @app.middleware("http")
     async def authentication_middleware(request, call_next):
+        """ User Authentication Middleware """
         if request.url.path not in ["/health", "/license", "/docs", "/static"]:
-            await authenticate()
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            token = auth_header.removeprefix("Bearer ").strip()
+            authenticate(token)
         response = await call_next(request)
         return response
 
@@ -263,7 +304,7 @@ async def scan_url(url: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
     try:
         result = await clamav.instream(BytesIO(data))
     except PyvalveScanningError as err:
-        logger.exception()
+        logger.exception(str(err))
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             response="Error scanning stream") from err
@@ -334,7 +375,7 @@ async def scan_upload_file(clamav: Annotated[ClamAv, Depends(clamav_init)], file
     try:
         result = await clamav.instream(BytesIO(file))
     except PyvalveScanningError as err:
-        logger.exception()
+        logger.exception(str(err))
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             response="Error scanning file") from err
