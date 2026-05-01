@@ -1,41 +1,98 @@
 """ScanCan Main entry point"""
 import asyncio
-from contextlib import asynccontextmanager
+import importlib.util
 import os
 import re
-from typing import Annotated
 import urllib
 from io import BytesIO
+from pathlib import Path
+
+from typing_extensions import Annotated
 
 import aiohttp
 from aiofile import async_open
-from fastapi import Depends, FastAPI, File, Request, status
-from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScanningError
+
+from fastapi import Depends, FastAPI, File, HTTPException, Request, status
+from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
 
 import config as conf
 from clamav import ClamAv
 from logger import Logger
-from models import ExceptionResponse, Health, HealthResponse, ScanResponse, VirusFoundResponse
+from models import (
+    ExceptionResponse,
+    Health,
+    HealthResponse,
+    ScanResponse,
+    Version,
+    VirusFoundResponse,
+)
 
-logger = Logger(name='ScanCan').get_logger()
+logger: Logger = Logger(name='ScanCan').get_logger()
 
 app = FastAPI(
     title="ScanCan",
     description="Virus Scanning API for ClamAV",
-    version="0.1.0",
-    static_directory='static',
-    swagger_static={
-        "favicon": 'favicon.ico',
-    },
+    version=conf.SCAN_CAN_VERSION,
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+
+def _load_authentication_module():
+    """Load optional addon authentication module from addon/authentication.py."""
+    auth_addon_file = Path("addon/authentication.py")
+
+    if not auth_addon_file.is_file():
+        logger.info("No addon authentication module found at %s", auth_addon_file)
+        return None
+
+    spec = importlib.util.spec_from_file_location("scancan_addon_authentication", auth_addon_file)
+    if not spec or not spec.loader:
+        logger.warning("Unable to load addon authentication module spec from %s", auth_addon_file)
+        return None
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    if not hasattr(module, "authenticate") or not callable(module.authenticate):
+        raise RuntimeError("Addon authentication module must define authenticate(token)")
+    return module
+
+# Authentication dependency
+def authenticate(token: str):
+    """
+    Authenticates the user by verifying the provided token.
+
+    Args:
+        token (str): The token to verify.
+
+    Raises:
+        HTTPException: If the token is invalid or missing.
+    """
+    module = _load_authentication_module()
+    if module is None:
+        return
+
+    result = module.authenticate(token)
+    if result is False:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+# Apply authentication conditionally
+if conf.USE_AUTHENTICATION:
+    @app.middleware("http")
+    async def authentication_middleware(request, call_next):
+        """ User Authentication Middleware """
+        if request.url.path not in ["/health", "/license", "/docs", "/static"]:
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            token = auth_header.removeprefix("Bearer ").strip()
+            authenticate(token)
+        response = await call_next(request)
+        return response
 
 class VirusFoundException(Exception):
     """ Virus Found Exception """
-    def __init__(self, status_code: int, response: str, path: str = None):
+    def __init__(self, status_code: int, response: str, path: str = ''):
         self.status_code = status_code
         self.response = response
         self.path = path
@@ -47,7 +104,7 @@ class ScanException(Exception):
         self.response = response
 
 @app.exception_handler(VirusFoundException)
-async def virus_found_exception_handler(request: Request, exc: VirusFoundException):
+async def virus_found_exception_handler(request: Request, exc: VirusFoundException): # pylint: disable=unused-argument
     """ Scan Exception Handler """
     error_model = VirusFoundResponse(
         status_code=exc.status_code,
@@ -55,7 +112,7 @@ async def virus_found_exception_handler(request: Request, exc: VirusFoundExcepti
     )
 
     if exc.path:
-        error_model.path=exc.path
+        error_model.path = exc.path
 
     return JSONResponse(
         status_code=exc.status_code,
@@ -63,10 +120,10 @@ async def virus_found_exception_handler(request: Request, exc: VirusFoundExcepti
     )
 
 @app.exception_handler(ScanException)
-async def scan_exception_handler(request: Request, exc: ScanException):
+async def scan_exception_handler(request: Request, exc: ScanException): # pylint: disable=unused-argument
     """ Scan Exception Handler """
     return JSONResponse(
-        status_code=exc.status_code,     
+        status_code=exc.status_code,
         content=ExceptionResponse(
             status_code=exc.status_code,
             response=exc.response
@@ -77,25 +134,30 @@ class ClamInstance:
     """ ClamInstance Singleton Dependency """
     _instance = None
 
-    async def __new__(cls):
+    def __new__(cls):
         if cls._instance is None:
             logger.info("Setting up ClamAV connection")
             cls._instance = ClamAv(conf)
             cls._instance.set_logger(logger)
-            await cls._instance.connecting()
         return cls._instance
+
+    async def initialize(self):
+        """
+        Asynchronously initializes the instance by establishing a connection.
+
+        This method checks if the `_instance` attribute is set and, if so, 
+        calls its `connecting` method to perform the connection process.
+
+        Returns:
+            None
+        """
+        if self._instance:
+            await self._instance.connecting()
 
 async def clamav_init() -> ClamAv:
     """ ClamAv Dependency """
-    clamav = await ClamInstance()
+    clamav = ClamInstance()
     return clamav
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """ Lifespan """
-    logger.info("Starting up ScanCan")
-    yield
-    logger.info("Shutting down ScanCan")
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
@@ -112,7 +174,6 @@ async def favicon():
     file_path = os.path.join(app.root_path, "static", "favicon.ico")
     return FileResponse(path=file_path)
 
-
 @app.get("/health",
          status_code=status.HTTP_200_OK,
          responses={
@@ -128,6 +189,7 @@ async def health(clamav: Annotated[ClamAv, Depends(clamav_init)]) -> HealthRespo
     """
     try:
         ping_result = await clamav.ping()
+        version_result = await clamav.version()
     except PyvalveConnectionError as err:
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -151,8 +213,10 @@ async def health(clamav: Annotated[ClamAv, Depends(clamav_init)]) -> HealthRespo
             response='Invalid response from ClamAV'
         )
 
-    return HealthResponse(response=Health(ping=ping_result, stats=stats_result)).model_dump()
-
+    return HealthResponse(response=Health(
+        ping=ping_result,
+        version=Version(ClamAV=version_result, ScanCan=conf.SCAN_CAN_VERSION),
+        stats=stats_result)).model_dump()
 
 @app.post("/scanpath/{path:path}",
     status_code=status.HTTP_200_OK,
@@ -170,7 +234,7 @@ async def scan_path(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
         Returns:
             result (ScanResponse)
     """
-    logger.info("Scanning path: %s" % path)
+    logger.info("Scanning path: %s", path)
     try:
         result = await clamav.scan(path)
     except PyvalveResponseError as err:
@@ -195,7 +259,6 @@ async def scan_path(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
 
     return ScanResponse(response=result).model_dump()
 
-
 @app.get("/scanurl/",
     status_code=status.HTTP_200_OK,
     responses={
@@ -216,9 +279,9 @@ async def scan_url(url: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
     """
 
     sema = asyncio.BoundedSemaphore(5)
-    data = ''
+    data = b''
     url = urllib.parse.unquote(url).strip()
-    logger.info(f"The url is: {url}")
+    logger.info("The url is: %s", url)
     try:
         async with sema, aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -233,15 +296,15 @@ async def scan_url(url: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
         raise ScanException(
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             response="Invalid URL") from err
-    if len(data) > conf.upload_size_limit:
+    if len(data) > conf.UPLOAD_SIZE_LIMIT:
         raise ScanException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,                
-            response=f'Max size {conf.upload_size_limit} bytes limit exceeded')
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            response=f'Max size {conf.UPLOAD_SIZE_LIMIT} bytes limit exceeded')
 
     try:
         result = await clamav.instream(BytesIO(data))
-    except PyvalveScanningError:
-        logger.exception()
+    except PyvalveScanningError as err:
+        logger.exception(str(err))
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             response="Error scanning stream") from err
@@ -253,7 +316,6 @@ async def scan_url(url: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
             path=url
         )
     return ScanResponse(response=result).model_dump()
-
 
 @app.post("/contscan/{path:path}",
     status_code=status.HTTP_200_OK,
@@ -271,7 +333,7 @@ async def cont_scan(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
         Returns:
             result (Object)
     """
-    logger.info("Scanning path: %s" % path)
+    logger.info("Scanning path: %s", path)
     try:
         result = await clamav.contscan(path)
     except PyvalveScanningError as err:
@@ -287,7 +349,6 @@ async def cont_scan(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
             response=result,
             path=path)
     return ScanResponse(response=result).model_dump()
-
 
 @app.post("/scanfile",
     status_code=status.HTTP_200_OK,
@@ -306,15 +367,15 @@ async def scan_upload_file(clamav: Annotated[ClamAv, Depends(clamav_init)], file
         Returns:
             result (Object)
     """
-    if len(file) > conf.upload_size_limit:
+    if len(file) > conf.UPLOAD_SIZE_LIMIT:
         raise ScanException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            response=f'Max size {conf.upload_size_limit} bytes limit exceeded')
+            response=f'Max size {conf.UPLOAD_SIZE_LIMIT} bytes limit exceeded')
 
     try:
         result = await clamav.instream(BytesIO(file))
     except PyvalveScanningError as err:
-        logger.exception()
+        logger.exception(str(err))
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             response="Error scanning file") from err
@@ -327,7 +388,6 @@ async def scan_upload_file(clamav: Annotated[ClamAv, Depends(clamav_init)], file
     return ScanResponse(
         status_code=status.HTTP_200_OK,
         response=result).model_dump()
-
 
 @app.get("/license", response_class=PlainTextResponse)
 async def show_license():

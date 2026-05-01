@@ -29,7 +29,7 @@ services:
   fresh_clam:
     build:
       context: .
-      dockerfile: Dockerfile.cron
+      dockerfile: Dockerfile.freshclam
     container_name: fresh_clam
     volumes:
       - ./clamdb:/opt/clamav

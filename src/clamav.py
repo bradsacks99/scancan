@@ -28,6 +28,12 @@ class ClamAv:
         await self.check_connect()
         return await self.pvs.ping()
 
+    async def version(self):
+        """ Ping """
+        self.logger.info("Running ping command")
+        await self.check_connect()
+        return await self.pvs.version()
+
     async def stats(self):
         """ Stats """
         self.logger.info("Running stats command")
@@ -55,13 +61,13 @@ class ClamAv:
     async def connecting(self):
         """ Connecting """
         self.logger.info("Connecting...")
-        if self.conf.clamd_conn == 'net':
+        if self.conf.CLAMD_CONN == 'net':
             self.pvs = await PyvalveNetwork(
-                self.conf.clamd_host,
-                self.conf.clamd_port
+            self.conf.CLAMD_HOST,
+            self.conf.CLAMD_PORT
             )
         else:
-            self.pvs = await PyvalveSocket(self.conf.clamd_socket)
+            self.pvs = await PyvalveSocket(self.conf.CLAMD_SOCKET)
         self.pvs.set_persistant_connection(True)
 
     async def check_connect(self):
