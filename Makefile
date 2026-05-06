@@ -1,6 +1,6 @@
 # Variables
 DOCKER_COMPOSE = docker compose
-PYLINT_CMD = pytest --pylint src/
+RUFF_CMD = ruff check src/
 PYTEST_CMD = pytest tests/
 MYPY_CMD = pytest --mypy src/
 AWS_REGION = YOUR_AWS_REGION
@@ -26,13 +26,13 @@ restart:
 
 .PHONY: test
 test:
-	$(PYLINT_CMD)
+	$(RUFF_CMD)
 	$(MYPY_CMD)
 	$(PYTEST_CMD)
 
-.PHONY: pylint
-pylint:
-	$(PYLINT_CMD)
+.PHONY: ruff
+ruff:
+	$(RUFF_CMD)
 
 .PHONY: pytest
 pytest:

@@ -6,15 +6,14 @@ import re
 import urllib
 from io import BytesIO
 from pathlib import Path
-
-from typing_extensions import Annotated
+from typing import Set
 
 import aiohttp
 from aiofile import async_open
-from pyvalve import PyvalveResponseError, PyvalveConnectionError, PyvalveScanningError
-
 from fastapi import Depends, FastAPI, File, HTTPException, Request, status
-from fastapi.responses import PlainTextResponse, JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from pyvalve import PyvalveConnectionError, PyvalveResponseError, PyvalveScanningError
+from typing_extensions import Annotated
 
 import config as conf
 from clamav import ClamAv
@@ -29,6 +28,15 @@ from models import (
 )
 
 logger: Logger = Logger(name='ScanCan').get_logger()
+
+ALLOWED_SCAN_ROOT: str = os.environ.get("SCANCAN_SCAN_ROOT", "/scan")
+PUBLIC_EXEMPT_PATHS: Set[str] = {
+    "/health",
+    "/license",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+}
 
 app = FastAPI(
     title="ScanCan",
@@ -81,7 +89,14 @@ if conf.USE_AUTHENTICATION:
     @app.middleware("http")
     async def authentication_middleware(request, call_next):
         """ User Authentication Middleware """
-        if request.url.path not in ["/health", "/license", "/docs", "/static"]:
+        path = request.url.path
+        is_public = (
+            path in PUBLIC_EXEMPT_PATHS
+            or path.startswith("/docs/")
+            or path.startswith("/redoc")
+            or path.startswith("/static/")
+        )
+        if not is_public:
             auth_header = request.headers.get("Authorization")
             if not auth_header or not auth_header.startswith("Bearer "):
                 raise HTTPException(status_code=401, detail="Unauthorized")
@@ -104,7 +119,7 @@ class ScanException(Exception):
         self.response = response
 
 @app.exception_handler(VirusFoundException)
-async def virus_found_exception_handler(request: Request, exc: VirusFoundException): # pylint: disable=unused-argument
+async def virus_found_exception_handler(request: Request, exc: VirusFoundException): # noqa: ARG001
     """ Scan Exception Handler """
     error_model = VirusFoundResponse(
         status_code=exc.status_code,
@@ -120,7 +135,7 @@ async def virus_found_exception_handler(request: Request, exc: VirusFoundExcepti
     )
 
 @app.exception_handler(ScanException)
-async def scan_exception_handler(request: Request, exc: ScanException): # pylint: disable=unused-argument
+async def scan_exception_handler(request: Request, exc: ScanException): # noqa: ARG001
     """ Scan Exception Handler """
     return JSONResponse(
         status_code=exc.status_code,
@@ -145,7 +160,7 @@ class ClamInstance:
         """
         Asynchronously initializes the instance by establishing a connection.
 
-        This method checks if the `_instance` attribute is set and, if so, 
+        This method checks if the `_instance` attribute is set and, if so,
         calls its `connecting` method to perform the connection process.
 
         Returns:
@@ -158,6 +173,20 @@ async def clamav_init() -> ClamAv:
     """ ClamAv Dependency """
     clamav = ClamInstance()
     return clamav
+
+
+def _is_within_scan_root(path: str) -> bool:
+    """Ensure the provided path resolves under the configured scan root."""
+    try:
+        target = Path(path)
+        if not target.is_absolute():
+            target = Path(ALLOWED_SCAN_ROOT) / target
+
+        resolved_target = target.resolve(strict=False)
+        resolved_root = Path(ALLOWED_SCAN_ROOT).resolve(strict=False)
+        return resolved_root in resolved_target.parents or resolved_target == resolved_root
+    except (RuntimeError, ValueError):
+        return False
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def favicon():
@@ -235,8 +264,20 @@ async def scan_path(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
             result (ScanResponse)
     """
     logger.info("Scanning path: %s", path)
+    if not _is_within_scan_root(path):
+        raise ScanException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            response='Path is outside allowed scan root'
+        )
+
+    target_path = (
+        str((Path(ALLOWED_SCAN_ROOT) / Path(path)).resolve(strict=False))
+        if not Path(path).is_absolute()
+        else path
+    )
+
     try:
-        result = await clamav.scan(path)
+        result = await clamav.scan(target_path)
     except PyvalveResponseError as err:
         logger.exception(str(err))
         raise ScanException(
@@ -282,6 +323,14 @@ async def scan_url(url: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
     data = b''
     url = urllib.parse.unquote(url).strip()
     logger.info("The url is: %s", url)
+
+    parsed_url = urllib.parse.urlparse(url)
+    if parsed_url.scheme.lower() not in {"http", "https"}:
+        raise ScanException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            response="Invalid URL"
+        )
+
     try:
         async with sema, aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -303,6 +352,11 @@ async def scan_url(url: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
 
     try:
         result = await clamav.instream(BytesIO(data))
+    except PyvalveResponseError as err:
+        logger.exception(str(err))
+        raise ScanException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            response="Error scanning stream") from err
     except PyvalveScanningError as err:
         logger.exception(str(err))
         raise ScanException(
@@ -334,15 +388,27 @@ async def cont_scan(path: str, clamav: Annotated[ClamAv, Depends(clamav_init)]):
             result (Object)
     """
     logger.info("Scanning path: %s", path)
+    if not _is_within_scan_root(path):
+        raise ScanException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            response='Path is outside allowed scan root'
+        )
+
+    target_path = (
+        str((Path(ALLOWED_SCAN_ROOT) / Path(path)).resolve(strict=False))
+        if not Path(path).is_absolute()
+        else path
+    )
+
     try:
-        result = await clamav.contscan(path)
+        result = await clamav.contscan(target_path)
     except PyvalveScanningError as err:
         logger.exception(err)
         raise ScanException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             response="Error scanning (cont)") from err
 
-    regex = re.compile(r'^.*\sFOUND', re.MULTILINE)
+    regex = re.compile(r'^.*\sFOUND$', re.MULTILINE)
     if re.match(regex, result):
         raise VirusFoundException(
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
@@ -385,9 +451,7 @@ async def scan_upload_file(clamav: Annotated[ClamAv, Depends(clamav_init)], file
             status_code=status.HTTP_406_NOT_ACCEPTABLE,
             response=result)
 
-    return ScanResponse(
-        status_code=status.HTTP_200_OK,
-        response=result).model_dump()
+    return ScanResponse(response=result).model_dump()
 
 @app.get("/license", response_class=PlainTextResponse)
 async def show_license():
@@ -398,6 +462,13 @@ async def show_license():
     """
     license_file = 'LICENSE'
 
-    async with async_open(license_file, 'r') as fh:
-        output = await fh.read()
+    try:
+        async with async_open(license_file, 'r') as fh:
+            output = await fh.read()
+    except OSError as err:
+        logger.error("Unable to read license file: %s", err)
+        raise ScanException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            response="License file not found"
+        ) from err
     return output

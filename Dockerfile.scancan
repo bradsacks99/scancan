@@ -19,7 +19,7 @@ COPY --chown=clamav LICENSE /app
 COPY --chown=clamav README.md /app
 WORKDIR /app
 
-RUN uv sync -p 3.9 --frozen
+RUN uv sync -p 3.9 --frozen --no-dev
 
 COPY --chown=clamav --chmod=0500 "./entrypoint.sh" "/entrypoint.sh"
 

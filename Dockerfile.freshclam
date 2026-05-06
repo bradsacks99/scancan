@@ -9,3 +9,8 @@ RUN chmod 0500 /etc/cron.d/freshclam && \
     chmod 0664 /opt/clamav
 
 CMD ["cron", "-f"]
+
+COPY entrypoint.freshclam.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
