@@ -36,11 +36,20 @@ class Logger:
             Returns:
                 logger (Logger)
         """
-        self.logger.setLevel(logging.INFO)
+        level = getattr(logging, self.level, logging.INFO)
+        self.logger.setLevel(level)
         formatter = logging.Formatter(self.format)
         con = logging.StreamHandler(stream=sys.stdout)
-        con.setLevel(level=logging.INFO)
+        con.setLevel(level=level)
         con.setFormatter(formatter)
-        self.logger.addHandler(con)
+
+        # Avoid duplicate stream handlers if get_logger is called repeatedly.
+        has_stdout_handler = any(
+            isinstance(handler, logging.StreamHandler)
+            and getattr(handler, "stream", None) is sys.stdout
+            for handler in self.logger.handlers
+        )
+        if not has_stdout_handler:
+            self.logger.addHandler(con)
 
         return self.logger

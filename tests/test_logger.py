@@ -83,3 +83,32 @@ def test_log_level_env_override(monkeypatch):
     importlib.reload(logger_module)
     instance = logger_module.Logger(name="test_env_lvl")
     assert instance.level == "WARNING"
+
+
+def test_get_logger_does_not_duplicate_stdout_handler():
+    instance = Logger(name="test_no_duplicate_handlers")
+    log = instance.get_logger()
+    log = instance.get_logger()
+
+    stdout_handlers = [
+        h
+        for h in log.handlers
+        if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
+    ]
+    assert len(stdout_handlers) == 1
+
+
+def test_set_level_is_applied_to_logger_and_handler():
+    instance = Logger(name="test_level_applied")
+    instance.set_level("DEBUG")
+    log = instance.get_logger()
+
+    assert log.level == logging.DEBUG
+
+    stdout_handlers = [
+        h
+        for h in log.handlers
+        if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) is sys.stdout
+    ]
+    assert stdout_handlers
+    assert stdout_handlers[-1].level == logging.DEBUG

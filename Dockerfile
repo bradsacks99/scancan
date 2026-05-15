@@ -19,5 +19,4 @@ COPY clamdb/ /opt/clamav/
 RUN chown -R clamav /opt/clamav/
 
 RUN mkdir /var/run/clamav
-RUN touch /var/run/clamav/clamd.ctl
-RUN chown clamav /var/run/clamav/clamd.ctl
+RUN chown clamav /var/run/clamav

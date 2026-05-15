@@ -1,5 +1,5 @@
 """Clamav Connector"""
-from pyvalve import PyvalveSocket, PyvalveConnectionError, PyvalveNetwork
+from pyvalve import PyvalveConnectionError, PyvalveNetwork, PyvalveSocket
 
 
 class ClamAv:
@@ -29,8 +29,8 @@ class ClamAv:
         return await self.pvs.ping()
 
     async def version(self):
-        """ Ping """
-        self.logger.info("Running ping command")
+        """ Version """
+        self.logger.info("Running version command")
         await self.check_connect()
         return await self.pvs.version()
 
@@ -72,11 +72,13 @@ class ClamAv:
 
     async def check_connect(self):
         """ Check Connect """
+        if self.pvs is None:
+            self.logger.info("No pyvalve client initialized, connecting...")
+            await self.connecting()
+            return
+
         try:
             await self.pvs.ping()
         except PyvalveConnectionError:
             self.logger.info("PyvalveConnectionError, connecting...")
-            await self.connecting()
-        except AttributeError:
-            self.logger.info("AttributeError, connecting...")
             await self.connecting()
