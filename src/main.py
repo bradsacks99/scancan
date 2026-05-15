@@ -29,7 +29,7 @@ from models import (
 
 logger: Logger = Logger(name='ScanCan').get_logger()
 
-ALLOWED_SCAN_ROOT: str = os.environ.get("SCANCAN_SCAN_ROOT", "/scan")
+ALLOWED_SCAN_ROOT: str = os.environ.get("SCANCAN_SCAN_ROOT", "/")
 PUBLIC_EXEMPT_PATHS: Set[str] = {
     "/health",
     "/license",
@@ -179,6 +179,10 @@ def _is_within_scan_root(path: str) -> bool:
     """Ensure the provided path resolves under the configured scan root."""
     try:
         target = Path(path)
+        # Reject path traversal attempts regardless of scan root configuration.
+        if ".." in target.parts:
+            return False
+
         if not target.is_absolute():
             target = Path(ALLOWED_SCAN_ROOT) / target
 
