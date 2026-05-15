@@ -298,6 +298,19 @@ def test_scan_url_invalid_url(monkeypatch):
     assert response.json()["response"] == "Invalid URL"
 
 
+def test_scan_url_rejects_non_http_scheme(monkeypatch):
+    async def fake_instream(data):
+        return "OK"
+
+    fake = _make_fake_clamav(instream=fake_instream)
+    _override_clamav(fake)
+
+    response = client.get("/scanurl/?url=file:///etc/passwd")
+
+    assert response.status_code == 406
+    assert response.json()["response"] == "Invalid URL"
+
+
 def test_scan_url_too_large(monkeypatch):
     async def fake_instream(data):
         return "OK"
@@ -321,6 +334,25 @@ def test_scan_url_scanning_error(monkeypatch):
 
     async def fake_instream(data):
         raise FakeScanningError("scan failed")
+
+    fake = _make_fake_clamav(instream=fake_instream)
+    _override_clamav(fake)
+    monkeypatch.setattr(aiohttp, "ClientSession", _fake_client_session())
+
+    response = client.get("/scanurl/?url=https://example.com")
+
+    assert response.status_code == 500
+    assert response.json()["response"] == "Error scanning stream"
+
+
+def test_scan_url_response_error(monkeypatch):
+    class FakeResponseError(Exception):
+        pass
+
+    monkeypatch.setattr(main_module, "PyvalveResponseError", FakeResponseError)
+
+    async def fake_instream(data):
+        raise FakeResponseError("response failed")
 
     fake = _make_fake_clamav(instream=fake_instream)
     _override_clamav(fake)
@@ -448,6 +480,32 @@ def test_scan_upload_file_virus_found():
     assert response.json()["response"] == "Eicar FOUND"
 
 
+def test_scan_path_rejects_outside_scan_root():
+    async def fake_scan(path):
+        return "OK"
+
+    fake = _make_fake_clamav(scan=fake_scan)
+    _override_clamav(fake)
+
+    response = client.post("/scanpath/..%2F..%2Fetc%2Fpasswd")
+
+    assert response.status_code == 406
+    assert response.json()["response"] == "Path is outside allowed scan root"
+
+
+def test_cont_scan_rejects_outside_scan_root():
+    async def fake_contscan(path):
+        return "OK"
+
+    fake = _make_fake_clamav(contscan=fake_contscan)
+    _override_clamav(fake)
+
+    response = client.post("/contscan/..%2F..%2Fetc%2Fpasswd")
+
+    assert response.status_code == 406
+    assert response.json()["response"] == "Path is outside allowed scan root"
+
+
 def test_show_license(monkeypatch):
     class AsyncFileMock:
         async def __aenter__(self):
@@ -465,3 +523,15 @@ def test_show_license(monkeypatch):
 
     assert response.status_code == 200
     assert "MIT License" in response.text
+
+
+def test_show_license_file_not_found(monkeypatch):
+    def raise_not_found(*args, **kwargs):
+        raise FileNotFoundError("missing")
+
+    monkeypatch.setattr("src.main.async_open", raise_not_found)
+
+    response = client.get("/license")
+
+    assert response.status_code == 404
+    assert response.json()["response"] == "License file not found"

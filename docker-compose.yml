@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
       target: clam_base
     image: clam_base:latest
+    volumes:
+      - clamd_run:/var/run/clamav
 
   scancan:
     build:
@@ -16,12 +18,14 @@ services:
     environment:
       - PYTHONPATH=/app
       - CLAMD_CONN=socket
+      - CLAMD_SOCKET=/var/run/clamav/clamd.ctl
     volumes:
       - ./scancan:/app/scancan:ro
       - ./clamdb:/opt/clamav
       - ./clamav_config:/etc/clamav:ro
       - ./LICENSE:/app/LICENSE:ro
       - ./README.md:/app/README.md:ro
+      - clamd_run:/var/run/clamav
     restart: unless-stopped
     depends_on:
       - clam_base
@@ -37,3 +41,6 @@ services:
     restart: unless-stopped
     depends_on:
       - clam_base
+
+volumes:
+  clamd_run:
