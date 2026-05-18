@@ -10,6 +10,11 @@ version = "0.1.0"
 description = "Virus Scanning API"
 readme = "README.md"
 
+[project.urls]
+Homepage = "https://github.com/bradsacks99/scancan"
+Repository = "https://github.com/bradsacks99/scancan"
+Issues = "https://github.com/bradsacks99/scancan/issues"
+
 dependencies = [
     "fastapi[standard]>=0.79.1,<1.0.0",
     "starlette>=0.47.2,<1.0.0",
